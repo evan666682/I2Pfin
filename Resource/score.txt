@@ -1,0 +1,14 @@
+Owen 70
+May 60
+Iris 200
+Karen 90
+NULL 200
+Musxi 170
+Joe 100
+Baiden 50
+Trump 80
+NULL 100
+
+NULL 200
+
+NULL 200
