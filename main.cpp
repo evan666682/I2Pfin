@@ -1,6 +1,7 @@
 // [main.cpp]
 // This is the entry point of your game.
 // You can register your scenes here, and start the game.
+#include <iostream>
 #include "Engine/GameEngine.hpp"
 #include "Engine/LOG.hpp"
 #include "Scene/LoseScene.hpp"
@@ -11,6 +12,7 @@
 #include "Scene/SettingsScene.hpp"
 #include "Scene/ScoreBoardScene.hpp"
 int main(int argc, char **argv) {
+	std::cout<<"s";/////////////////////////////////////
 	Engine::LOG::SetConfig(true);
 	Engine::GameEngine& game = Engine::GameEngine::GetInstance();
 
