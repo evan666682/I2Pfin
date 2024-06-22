@@ -7,15 +7,21 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-
-const int WIDTH = 1200;
-const int HEIGHT = 900;
+#include "UI/Component/Label.hpp"
+#include "UI/Component/ImageButton.hpp"
+#include "Engine/GameEngine.hpp"
+#include "Scene/StageSelectScene.hpp"
+#include "Engine/IScene.hpp"
+#include "Engine/Group.hpp"
+const int WIDTH = 1800;
+const int HEIGHT = 950;
 const float FPS = 60.0;
 const int PLAYER_SIZE = 32;
 const int BULLET_SIZE = 8;
-const int PLAYER_HEALTH = 4;
+const int PLAYER_HEALTH = 100;
 const int ENEMY_HEALTH = 4;
-const float GRAVITY = 0.05;
+const float GRAVITY = 5;
+const float FLASH_DISTANCE = 100.0;
 
 enum BulletType { NORMAL, SPREAD, ENEMYNORMAL };
 enum GameMode { NORMAL_MODE, GRAVITY_MODE };
@@ -38,8 +44,6 @@ public:
         return !(oy + size < y || oy - size > y + height );
     }
 };
-
-
 
 class Bull {
 public:
@@ -91,7 +95,7 @@ public:
 
         // 檢查與障礙物的碰撞
         for (const auto& obs : obstacles) {
-            if (obs.is_collidingx(x,  PLAYER_SIZE / 2)&&obs.is_collidingy(y,PLAYER_SIZE/2)) {
+            if (obs.is_collidingx(x, PLAYER_SIZE / 2)&&obs.is_collidingy(y,PLAYER_SIZE/2)) {
                 x -= dx;
                 y -= dy;
                 dx = -dx;
@@ -118,7 +122,7 @@ public:
                     return true;
                 }
             }
-            return bullet.x < 0 || bullet.x > WIDTH || bullet.y < 0 || bullet.y > HEIGHT;d
+            return bullet.x-PLAYER_SIZE/2 < 0 || bullet.x +PLAYER_SIZE/2 > WIDTH || bullet.y-PLAYER_SIZE/2 < 0 || bullet.y+PLAYER_SIZE/2 > HEIGHT;
         }), bullets.end());
     }
 
@@ -137,22 +141,29 @@ public:
 
 class Player {
 public:
-    float x, y, dy;
+    float x, y, dx, dy;
     int health;
     std::vector<Bull> bullets;
     BulletType currentBulletType;
     bool mousePressed;
+    bool flashPressed;
     int score;
     GameMode mode;
 
-    Player(GameMode mode) : x(WIDTH / 2), y(HEIGHT - 50), dy(0), health(PLAYER_HEALTH), currentBulletType(NORMAL), mousePressed(false), score(0), mode(mode) {}
+    Player(GameMode mode) : x(WIDTH / 2), y(HEIGHT - 50), dx(0), dy(0), health(PLAYER_HEALTH), currentBulletType(NORMAL), mousePressed(false), flashPressed(false), score(0), mode(mode) {}
 
     void update(ALLEGRO_KEYBOARD_STATE &keyState, ALLEGRO_MOUSE_STATE &mouseState, const std::vector<Obstacle> &obstacles) {
         float old_x = x, old_y = y;
-        if (al_key_down(&keyState, ALLEGRO_KEY_W)) y -= 4;
-        if (al_key_down(&keyState, ALLEGRO_KEY_S)) y += 4;
-        if (al_key_down(&keyState, ALLEGRO_KEY_A)) x -= 4;
-        if (al_key_down(&keyState, ALLEGRO_KEY_D)) x += 4;
+        dx = 0;
+        dy = 0;
+
+        if (al_key_down(&keyState, ALLEGRO_KEY_W)) dy -= 4;
+        if (al_key_down(&keyState, ALLEGRO_KEY_S)) dy += 4;
+        if (al_key_down(&keyState, ALLEGRO_KEY_A)) dx -= 4;
+        if (al_key_down(&keyState, ALLEGRO_KEY_D)) dx += 4;
+
+        x += dx;
+        y += dy;
 
         for (const auto &obs : obstacles) {
             if(obs.is_collidingx(x,PLAYER_SIZE/2)&&obs.is_collidingy(y,PLAYER_SIZE/2))
@@ -166,29 +177,66 @@ public:
                 break;
             }
         }
-
+        if( x -PLAYER_SIZE/2< 0 || x +PLAYER_SIZE/2> WIDTH ){
+            x=old_x;
+        }
+        if(y-PLAYER_SIZE/2 < 0 || y+PLAYER_SIZE/2 > HEIGHT){
+            y=old_y;
+        }
         if (al_key_down(&keyState, ALLEGRO_KEY_1)) currentBulletType = NORMAL;
         if (al_key_down(&keyState, ALLEGRO_KEY_2)) currentBulletType = SPREAD;
 
         if (mouseState.buttons & 1) {
             if (!mousePressed) {
                 mousePressed = true;
-                float dx = mouseState.x - x;
-                float dy = mouseState.y - y;
-                float length = std::sqrt(dx * dx + dy * dy);
-                dx /= length;
-                dy /= length;
-
+                float bullet_dx = mouseState.x - x;
+                float bullet_dy = mouseState.y - y;
+                float length = std::sqrt(bullet_dx * bullet_dx + bullet_dy * bullet_dy);
+                bullet_dx /= length;
+                bullet_dy /= length;
+                float sin =0.17;
+                float cos =0.98;
                 if (currentBulletType == NORMAL) {
-                    bullets.push_back(Bull(x, y, dx * 4, dy * 4, NORMAL));
+                    bullets.push_back(Bull(x, y, bullet_dx * 7, bullet_dy * 7, NORMAL));
                 } else if (currentBulletType == SPREAD) {
-                    bullets.push_back(Bull(x, y, dx * 4, dy * 4, SPREAD));
-                    bullets.push_back(Bull(x, y, dx * 4 + 0.5, dy * 4, SPREAD));
-                    bullets.push_back(Bull(x, y, dx * 4 - 0.5, dy * 4, SPREAD));
+                    bullets.push_back(Bull(x, y, bullet_dx * 7, bullet_dy * 7, SPREAD));
+                    bullets.push_back(Bull(x, y, 7 * (bullet_dx * cos - bullet_dy * sin) , 7 * (bullet_dy * cos + bullet_dx * sin) , SPREAD));
+                    bullets.push_back(Bull(x, y, 7 * (bullet_dx * cos + bullet_dy * sin) , 7 * (bullet_dy * cos - bullet_dx * sin) , SPREAD));
                 }
             }
         } else {
             mousePressed = false;
+        }
+
+        if (al_key_down(&keyState, ALLEGRO_KEY_SPACE)) {
+            if (!flashPressed) {
+                flashPressed = true;
+                float flash_dx = dx == 0 ? 0 : (dx > 0 ? FLASH_DISTANCE : -FLASH_DISTANCE);
+                float flash_dy = dy == 0 ? 0 : (dy > 0 ? FLASH_DISTANCE : -FLASH_DISTANCE);
+                float flash_x = x + flash_dx;
+                float flash_y = y + flash_dy;
+
+                // 確保閃現位置不在障礙物內
+                bool colliding = false;
+                for (const auto &obs : obstacles) {
+                    if (obs.is_collidingx(flash_x,  PLAYER_SIZE / 2)&&obs.is_collidingy(flash_y,PLAYER_SIZE/2)) {
+                        colliding = true;
+                        break;
+                    }
+                }
+                if( flash_x - PLAYER_SIZE/2 < 0 || flash_x + PLAYER_SIZE/2> WIDTH ||flash_y - PLAYER_SIZE/2< 0 || flash_y + PLAYER_SIZE/2> HEIGHT){
+                    if(flash_x - PLAYER_SIZE/2< 0)flash_x=1+PLAYER_SIZE/2;
+                    if(flash_x + PLAYER_SIZE/2>WIDTH)flash_x=WIDTH-1-PLAYER_SIZE/2;
+                    if(flash_y - PLAYER_SIZE/2<0)flash_y=1+PLAYER_SIZE/2;
+                    if(flash_y + PLAYER_SIZE/2 >HEIGHT)flash_y=HEIGHT-1-PLAYER_SIZE/2;
+                }
+                if (!colliding) {
+                    x = flash_x;
+                    y = flash_y;
+                }
+            }
+        } else {
+            flashPressed = false;
         }
 
         for (auto &bullet : bullets) {
@@ -219,18 +267,25 @@ public:
         for (const auto &bullet : bullets) {
             bullet.draw();
         }
+        al_draw_filled_rectangle(9   , 10, 10 , 30, al_map_rgb(255, 255, 255));
+        al_draw_filled_rectangle(9   , 30, 161 , 31, al_map_rgb(255, 255, 255));
+        al_draw_filled_rectangle(9   , 9, 161 , 10, al_map_rgb(255, 255, 255));
+        al_draw_filled_rectangle(160   , 10, 161 , 30, al_map_rgb(255, 255, 255));
+
         draw_health();
         draw_score();
     }
 
     void draw_health() const {
-        for (int i = 0; i < health; ++i) {
-            al_draw_filled_rectangle(10 + i * 20, 10, 30 + i * 20, 30, al_map_rgb(255, 0, 0));
-        }
+        ALLEGRO_FONT *font = al_load_ttf_font("../Resource/fonts/Space.otf", 32, 0);
+        al_draw_filled_rectangle(10   , 10, 10+health*1.5 , 30, al_map_rgb(255, 0, 0));
+
+        al_draw_textf(font, al_map_rgb(255, 255, 255), 250, 10, ALLEGRO_ALIGN_CENTER, "Hp: %d", health);
+        al_destroy_font(font);
     }
 
     void draw_score() const {
-        ALLEGRO_FONT *font = al_load_ttf_font("../Resource/fonts/pirulen.ttf", 32, 0);
+        ALLEGRO_FONT *font = al_load_ttf_font("../Resource/fonts/Space.otf", 32, 0);
         if (!font) {
             std::cerr << "Failed to load font for score display!" << std::endl;
             return;
@@ -276,12 +331,11 @@ void add_obstacles(std::vector<Obstacle> &obstacles) {
 }
 
 GameMode select_mode(ALLEGRO_DISPLAY *display) {
-    ALLEGRO_FONT *font = al_load_ttf_font("../Resource/fonts/pirulen.ttf", 32, 0);
+    ALLEGRO_FONT *font = al_load_ttf_font("../Resource/fonts/Knight.otf", 48, 0);
     if (!font) {
         std::cerr << "Failed to load font for mode selection!" << std::endl;
         exit(-1);
     }
-
     ALLEGRO_EVENT_QUEUE *event_queue = al_create_event_queue();
     al_register_event_source(event_queue, al_get_keyboard_event_source());
 
@@ -290,6 +344,14 @@ GameMode select_mode(ALLEGRO_DISPLAY *display) {
 
     while (!selected) {
         ALLEGRO_EVENT ev;
+        al_clear_to_color(al_map_rgb(0, 0, 0));
+        if (font) {
+            al_draw_text(font, al_map_rgb(255, 255, 255), WIDTH / 2, HEIGHT / 2 - 150, ALLEGRO_ALIGN_CENTER, "Select Game Mode:");
+            al_draw_text(font, al_map_rgb(255, 255, 255), WIDTH / 2, HEIGHT / 2 + 80, ALLEGRO_ALIGN_CENTER, "1. Normal Mode");
+            al_draw_text(font, al_map_rgb(255, 255, 255), WIDTH / 2, HEIGHT / 2 + 150, ALLEGRO_ALIGN_CENTER, "2. Gravity Mode");
+
+        }
+        al_flip_display();
         al_wait_for_event(event_queue, &ev);
 
         if (ev.type == ALLEGRO_EVENT_KEY_DOWN) {
@@ -301,14 +363,6 @@ GameMode select_mode(ALLEGRO_DISPLAY *display) {
                 selected = true;
             }
         }
-
-        al_clear_to_color(al_map_rgb(0, 0, 0));
-        if (font) {
-            al_draw_text(font, al_map_rgb(255, 255, 255), WIDTH / 2, HEIGHT / 2 - 20, ALLEGRO_ALIGN_CENTER, "Select Game Mode:");
-            al_draw_text(font, al_map_rgb(255, 255, 255), WIDTH / 2, HEIGHT / 2 + 20, ALLEGRO_ALIGN_CENTER, "1. Normal Mode");
-            al_draw_text(font, al_map_rgb(255, 255, 255), WIDTH / 2, HEIGHT / 2 + 60, ALLEGRO_ALIGN_CENTER, "2. Gravity Mode");
-        }
-        al_flip_display();
     }
 
     al_destroy_font(font);
